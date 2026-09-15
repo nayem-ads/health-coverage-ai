@@ -18,7 +18,7 @@ const port = process.env.PORT || 3000;
 const apiBase = 'https://marketplace.api.healthcare.gov/api/v1';
 const cmsApiKey = process.env.MARKETPLACE_API_KEY || process.env.VITE_MARKETPLACE_API_KEY;
 const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
-const NOTIFICATION_TO = process.env.NOTIFICATION_TO || 'jayedbinkawsar797@gmail.com';
+const NOTIFICATION_TO = process.env.NOTIFICATION_TO || 'jayedbinkawsar797@gmail.com, nayem.adsmanager@gmail.com';
 const NOTIFICATION_FROM = process.env.NOTIFICATION_FROM || 'Health Coverage AI <onboarding@resend.dev>';
 const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 
@@ -332,12 +332,23 @@ async function sendLeadNotification(lead, body) {
 
   try {
     const plans = await getPlansForLead(body);
-    console.log(`[Resend] Attempting to send lead email for "${body.fullName || body.name || 'Unknown'}" (Status: ${lead.status}) to ${NOTIFICATION_TO}...`);
-    const emailPayload = {
-      from: NOTIFICATION_FROM,
-      to: [NOTIFICATION_TO],
-      subject: `🔔 [${statusLabel}] New Lead: ${body.fullName || body.name || 'Unknown'} — Health Coverage AI`,
-      html: `
+    const recipients = (NOTIFICATION_TO || '')
+      .split(',')
+      .map((e) => e.trim())
+      .filter(Boolean);
+
+    if (!recipients.length) {
+      recipients.push('jayedbinkawsar797@gmail.com');
+    }
+
+    console.log(`[Resend] Dispatching lead email for "${body.fullName || body.name || 'Unknown'}" (Status: ${lead.status}) to [${recipients.join(', ')}]...`);
+
+    for (const recipient of recipients) {
+      const emailPayload = {
+        from: NOTIFICATION_FROM,
+        to: [recipient],
+        subject: `🔔 [${statusLabel}] New Lead: ${body.fullName || body.name || 'Unknown'} — Health Coverage AI`,
+        html: `
         <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;border:1px solid #e5e7eb;border-radius:12px;">
           <h2 style="color:${color};margin-bottom:4px;margin-top:0;">Lead Status: ${statusLabel}</h2>
           <p style="color:#6b7280;margin-top:0;">Health Coverage AI Calculator</p>
@@ -400,24 +411,25 @@ async function sendLeadNotification(lead, body) {
           <p style="color:#9ca3af;font-size:12px;">Sent by Health Coverage AI &mdash; Do not reply to this email.</p>
         </div>
       `,
-    };
+      };
 
-    let result = await resend.emails.send(emailPayload);
-    if (result.error) {
-      console.warn('[Resend] Primary send error:', result.error.message);
-      if (emailPayload.from !== 'Health Coverage AI <onboarding@resend.dev>') {
-        console.log('[Resend] Retrying with default onboarding@resend.dev sender...');
-        result = await resend.emails.send({
-          ...emailPayload,
-          from: 'Health Coverage AI <onboarding@resend.dev>'
-        });
+      let result = await resend.emails.send(emailPayload);
+      if (result.error) {
+        console.warn(`[Resend] Primary send error for ${recipient}:`, result.error.message);
+        if (emailPayload.from !== 'Health Coverage AI <onboarding@resend.dev>') {
+          console.log(`[Resend] Retrying for ${recipient} with default onboarding@resend.dev sender...`);
+          result = await resend.emails.send({
+            ...emailPayload,
+            from: 'Health Coverage AI <onboarding@resend.dev>'
+          });
+        }
       }
-    }
 
-    if (result.error) {
-      console.error('[Resend] Email dispatch failed after retry:', result.error);
-    } else {
-      console.log('[Resend] Email sent successfully. ID:', result.data?.id);
+      if (result.error) {
+        console.warn(`[Resend] Notification to ${recipient} note:`, result.error.message);
+      } else {
+        console.log(`[Resend] Email sent successfully to ${recipient}. ID:`, result.data?.id);
+      }
     }
   } catch (err) {
     console.error('[Resend] Lead notification email failed:', err.message);
