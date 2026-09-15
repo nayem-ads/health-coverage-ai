@@ -18,17 +18,11 @@ const port = process.env.PORT || 3000;
 const apiBase = 'https://marketplace.api.healthcare.gov/api/v1';
 const cmsApiKey = process.env.MARKETPLACE_API_KEY || process.env.VITE_MARKETPLACE_API_KEY;
 const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
-const NOTIFICATION_TO = process.env.NOTIFICATION_TO || 'Ramsayjeanjacques@rjhealthsolutions.com';
+const NOTIFICATION_TO = process.env.NOTIFICATION_TO || 'jayedbinkawsar797@gmail.com';
 const NOTIFICATION_FROM = process.env.NOTIFICATION_FROM || 'Health Coverage AI Leads <noreply@healthcoveragequote.com>';
 const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 
-// Zoho CRM config
-const ZOHO_CLIENT_ID = process.env.ZOHO_CLIENT_ID || '';
-const ZOHO_CLIENT_SECRET = process.env.ZOHO_CLIENT_SECRET || '';
-const ZOHO_REFRESH_TOKEN = process.env.ZOHO_REFRESH_TOKEN || '';
-const ZOHO_API_DOMAIN = process.env.ZOHO_API_DOMAIN || 'https://www.zohoapis.com';
-let zohoAccessToken = null;
-let zohoTokenExpiresAt = 0;
+// Zoho CRM integration disabled (leads dispatched exclusively to email & local store)
 
 // SMS verification disabled - Direct instant unlock active
 
@@ -131,26 +125,7 @@ function getStateFromZipPrefix(zipCode) {
 }
 
 
-async function getZohoAccessToken() {
-  if (zohoAccessToken && Date.now() < zohoTokenExpiresAt - 60_000) {
-    return zohoAccessToken;
-  }
-  const res = await fetch('https://accounts.zoho.com/oauth/v2/token', {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'refresh_token',
-      client_id: ZOHO_CLIENT_ID,
-      client_secret: ZOHO_CLIENT_SECRET,
-      refresh_token: ZOHO_REFRESH_TOKEN,
-    }),
-  });
-  const data = await res.json();
-  if (!data.access_token) throw new Error(`Zoho token refresh failed: ${JSON.stringify(data)}`);
-  zohoAccessToken = data.access_token;
-  zohoTokenExpiresAt = Date.now() + (data.expires_in || 3600) * 1000;
-  return zohoAccessToken;
-}
+
 
 async function getLeadById(id) {
   try {
@@ -330,140 +305,9 @@ async function saveOrUpdateLead(lead) {
   return updatedLead;
 }
 
-async function zohoCreateLead(body) {
-  try {
-    const token = await getZohoAccessToken();
-    const fullName = (body.fullName || body.name || '').trim();
-    const plans = await getPlansForLead(body);
-    const planDescriptions = plans.map((p, i) =>
-      `Plan ${i+1}: ${p.issuer} - ${p.name} (${p.metalLevel} ${p.type}) | Premium: $${p.premiumWithCredit !== undefined ? p.premiumWithCredit : p.premium}/mo | Deductible: $${p.deductible}`
-    ).join('\n');
+// zohoCreateLead removed
 
-    const leadData = {
-      data: [{
-        Last_Name: fullName || 'Unknown',
-        Mobile: body.phone ?? null,
-        Email: body.email ?? null,
-        Lead_Source: 'Web Site',
-        Zip_Code: body.zipCode ?? null,
-        Household_Size: body.householdSize ? String(body.householdSize) : null,
-        Household_income: body.incomeRange ?? null,
-        Household_Income: body.incomeRange ?? null,
-        Annual_Revenue: body.incomeRange ? parseIncome(body.incomeRange, body.householdSize ? Number(body.householdSize) : 1) : null,
-        Year_of_Birth: body.birthYear ?? null,
-        QLE: body.situation ? getSituationLabel(body.situation) : null,
-        Plan_Type: body.planPreference ? getPlanPreferenceLabel(body.planPreference) : null,
-        Urgency: body.urgency ? getUrgencyLabel(body.urgency) : null,
-        Description: [
-          body.situation ? `Situation: ${getSituationLabel(body.situation)}` : '',
-          body.incomeRange ? `Income: ${body.incomeRange}` : '',
-          body.householdSize ? `Household size: ${body.householdSize}` : '',
-          body.planPreference ? `Plan preference: ${getPlanPreferenceLabel(body.planPreference)}` : '',
-          body.urgency ? `Urgency: ${getUrgencyLabel(body.urgency)}` : '',
-          body.zipCode ? `ZIP: ${body.zipCode}` : '',
-          body.state ? `State: ${body.state}` : '',
-          body.agentName ? `Agent: ${body.agentName}` : '',
-          `Verified: ${body.verified ? 'Yes' : 'No'}`,
-          `Status: ${body.status || 'draft'}`,
-          body.utmCampaign ? `UTM Campaign: ${body.utmCampaign}` : '',
-          body.utmContent ? `UTM Ad Name: ${body.utmContent}` : '',
-          body.utmSource ? `UTM Source: ${body.utmSource}` : '',
-          body.utmMedium ? `UTM Medium: ${body.utmMedium}` : '',
-          body.utmTerm ? `UTM Adset Name: ${body.utmTerm}` : '',
-          '\n--- Plans & Rates Seen ---',
-          planDescriptions
-        ].filter(Boolean).join('\n'),
-        SMS_Opt_In: body.smsConsent ? 'true' : 'false',
-      }],
-      trigger: ['approval', 'workflow', 'blueprint'],
-    };
-    const resp = await fetch(`${ZOHO_API_DOMAIN}/crm/v2/Leads`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Zoho-oauthtoken ${token}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify(leadData),
-    });
-    const result = await resp.json();
-    if (result.data?.[0]?.status === 'success') {
-      const zohoId = result.data[0].details?.id;
-      console.log(`[Zoho] Lead created: ${zohoId}`);
-      return zohoId;
-    } else {
-      console.error('[Zoho] Lead creation failed:', JSON.stringify(result));
-    }
-  } catch (err) {
-    console.error('[Zoho] Error:', err.message);
-  }
-  return null;
-}
-
-async function zohoUpdateLead(zohoLeadId, body) {
-  try {
-    const token = await getZohoAccessToken();
-    const fullName = (body.fullName || body.name || '').trim();
-    const plans = await getPlansForLead(body);
-    const planDescriptions = plans.map((p, i) =>
-      `Plan ${i+1}: ${p.issuer} - ${p.name} (${p.metalLevel} ${p.type}) | Premium: $${p.premiumWithCredit !== undefined ? p.premiumWithCredit : p.premium}/mo | Deductible: $${p.deductible}`
-    ).join('\n');
-
-    const leadData = {
-      data: [{
-        Last_Name: fullName || 'Unknown',
-        Mobile: body.phone ?? null,
-        Email: body.email ?? null,
-        Household_Size: body.householdSize ? String(body.householdSize) : null,
-        Household_income: body.incomeRange ?? null,
-        Household_Income: body.incomeRange ?? null,
-        Annual_Revenue: body.incomeRange ? parseIncome(body.incomeRange, body.householdSize ? Number(body.householdSize) : 1) : null,
-        Year_of_Birth: body.birthYear ?? null,
-        QLE: body.situation ? getSituationLabel(body.situation) : null,
-        Plan_Type: body.planPreference ? getPlanPreferenceLabel(body.planPreference) : null,
-        Urgency: body.urgency ? getUrgencyLabel(body.urgency) : null,
-        Description: [
-          body.situation ? `Situation: ${getSituationLabel(body.situation)}` : '',
-          body.incomeRange ? `Income: ${body.incomeRange}` : '',
-          body.householdSize ? `Household size: ${body.householdSize}` : '',
-          body.planPreference ? `Plan preference: ${getPlanPreferenceLabel(body.planPreference)}` : '',
-          body.urgency ? `Urgency: ${getUrgencyLabel(body.urgency)}` : '',
-          body.zipCode ? `ZIP: ${body.zipCode}` : '',
-          body.state ? `State: ${body.state}` : '',
-          body.agentName ? `Agent: ${body.agentName}` : '',
-          `Verified: ${body.verified ? 'Yes' : 'No'}`,
-          `Status: ${body.status || 'draft'}`,
-          body.utmCampaign ? `UTM Campaign: ${body.utmCampaign}` : '',
-          body.utmContent ? `UTM Ad Name: ${body.utmContent}` : '',
-          body.utmSource ? `UTM Source: ${body.utmSource}` : '',
-          body.utmMedium ? `UTM Medium: ${body.utmMedium}` : '',
-          body.utmTerm ? `UTM Adset Name: ${body.utmTerm}` : '',
-          '\n--- Plans & Rates Seen ---',
-          planDescriptions
-        ].filter(Boolean).join('\n'),
-        SMS_Opt_In: body.smsConsent ? 'true' : 'false',
-      }],
-      trigger: ['approval', 'workflow', 'blueprint'],
-    };
-    const resp = await fetch(`${ZOHO_API_DOMAIN}/crm/v2/Leads/${zohoLeadId}`, {
-      method: 'PUT',
-      headers: {
-        'Authorization': `Zoho-oauthtoken ${token}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify(leadData),
-    });
-    const result = await resp.json();
-    if (result.data?.[0]?.status === 'success') {
-      console.log(`[Zoho] Lead updated: ${zohoLeadId}`);
-      return true;
-    } else {
-      console.error('[Zoho] Lead update failed:', JSON.stringify(result));
-    }
-  } catch (err) {
-    console.error('[Zoho] Update Error:', err.message);
-  }
-  return false;
-}
+// zohoUpdateLead removed
 
 async function sendLeadNotification(lead, body) {
   const agentName = body.agentName || body.agent?.name || 'None selected (unlocked results page)';
@@ -513,7 +357,7 @@ async function sendLeadNotification(lead, body) {
             <tr><td style="padding:8px 0;color:#374151;font-weight:600;">SMS Consent</td><td style="padding:8px 0;color:#111827;">${body.smsConsent ? 'Yes' : 'No'}</td></tr>
             <tr><td style="padding:8px 0;color:#374151;font-weight:600;">Call Consent</td><td style="padding:8px 0;color:#111827;">${body.callConsent ? 'Yes' : 'No'}</td></tr>
             <tr><td style="padding:8px 0;color:#374151;font-weight:600;">Lead ID</td><td style="padding:8px 0;color:#6b7280;font-size:12px;">${lead.id}</td></tr>
-            <tr><td style="padding:8px 0;color:#374151;font-weight:600;">Zoho Lead ID</td><td style="padding:8px 0;color:#6b7280;font-size:12px;">${lead.zohoLeadId || '—'}</td></tr>
+            
             ${body.utmCampaign ? `<tr><td style="padding:8px 0;color:#374151;font-weight:600;">UTM Campaign</td><td style="padding:8px 0;color:#e11d48;font-weight:600;">${body.utmCampaign}</td></tr>` : ''}
             ${body.utmContent ? `<tr><td style="padding:8px 0;color:#374151;font-weight:600;">UTM Ad Name</td><td style="padding:8px 0;color:#e11d48;font-weight:600;">${body.utmContent}</td></tr>` : ''}
             ${body.utmSource ? `<tr><td style="padding:8px 0;color:#374151;font-weight:600;">UTM Source</td><td style="padding:8px 0;color:#111827;">${body.utmSource}</td></tr>` : ''}
@@ -1098,45 +942,20 @@ app.post('/api/leads', async (req, res) => {
               utmTerm: latestLead.utmTerm || '',
             };
 
-            let activeZohoId = latestLead.zohoLeadId;
-            if (!activeZohoId) {
-              activeZohoId = await zohoCreateLead(mapped);
-              if (activeZohoId) {
-                latestLead.zohoLeadId = activeZohoId;
-              }
-            } else {
-              await zohoUpdateLead(activeZohoId, mapped);
-            }
-
             latestLead.status = 'captured_notified';
             const finalSavedLead = await saveOrUpdateLead(latestLead);
 
             await sendLeadNotification(finalSavedLead, mapped);
-            console.log(`[Auto-Capture Window] Window expired. Sent deferred notification/Zoho CRM for ${leadId}`);
+            console.log(`[Auto-Capture Window] Window expired. Sent deferred email notification to ${NOTIFICATION_TO} for ${leadId}`);
           }
         } catch (err) {
           console.error('[Auto-Capture Window Error]', err.message);
         }
       }, 60000);
       autoCaptureTimers.set(leadId, timer);
-    } else if (currentStatus === 'captured_notified' && zohoLeadId) {
-      await zohoUpdateLead(zohoLeadId, mappedLead);
-    }
-    
     return res.status(201).json({ ok: true, leadId: savedLead.id });
   } else {
     // Final Form Submission
-    let activeZohoId = zohoLeadId;
-    if (!activeZohoId) {
-      activeZohoId = await zohoCreateLead(mappedLead);
-      if (activeZohoId) {
-        savedLead.zohoLeadId = activeZohoId;
-        await saveOrUpdateLead(savedLead);
-      }
-    } else {
-      await zohoUpdateLead(activeZohoId, mappedLead);
-    }
-
     if (currentStatus !== 'submitted' && currentStatus !== 'verified') {
       sendLeadNotification(savedLead, mappedLead);
     }
@@ -1146,93 +965,14 @@ app.post('/api/leads', async (req, res) => {
   }
 });
 
-// Verification Endpoint
+// Verification Endpoint (Legacy fallback)
 app.post('/api/otp/verify', async (req, res) => {
-  const { leadId, phone, code } = req.body || {};
-  if (!phone || !code) {
-    return res.status(400).json({ ok: false, error: 'Phone and verification code are required.' });
-  }
-
-  // Clear any existing timer for this lead
-  if (autoCaptureTimers.has(leadId)) {
-    clearTimeout(autoCaptureTimers.get(leadId));
-    autoCaptureTimers.delete(leadId);
-  }
-
-  try {
-    const isValid = await checkVerificationOtp(phone, code);
-    if (!isValid) {
-      return res.status(400).json({ ok: false, error: 'Invalid or expired verification code.' });
-    }
-
-    const existingLead = await getLeadById(leadId);
-    
-    const leadToSave = {
-      ...existingLead,
-      id: leadId,
-      phone,
-      verified: true,
-      status: 'verified',
-    };
-
-    const savedLead = await saveOrUpdateLead(leadToSave);
-
-    const mappedLead = {
-      fullName: savedLead.fullName || '',
-      phone: savedLead.phone || '',
-      email: savedLead.email || '',
-      zipCode: savedLead.zipCode || '',
-      state: savedLead.state || '',
-      incomeRange: savedLead.incomeRange || '',
-      householdSize: savedLead.householdSize || 1,
-      situation: savedLead.situation || '',
-      planPreference: savedLead.planPreference || '',
-      urgency: savedLead.urgency || '',
-      smsConsent: savedLead.smsConsent || false,
-      callConsent: savedLead.callConsent || false,
-      agentName: savedLead.agentName || '',
-      verified: true,
-      status: 'verified',
-      utmSource: savedLead.utmSource || '',
-      utmMedium: savedLead.utmMedium || '',
-      utmCampaign: savedLead.utmCampaign || '',
-      utmContent: savedLead.utmContent || '',
-      utmTerm: savedLead.utmTerm || '',
-    };
-
-    if (savedLead.zohoLeadId) {
-      await zohoUpdateLead(savedLead.zohoLeadId, mappedLead);
-    } else {
-      const newZohoId = await zohoCreateLead(mappedLead);
-      if (newZohoId) {
-        savedLead.zohoLeadId = newZohoId;
-        await saveOrUpdateLead(savedLead);
-      }
-    }
-    
-    sendLeadNotification(savedLead, mappedLead);
-
-    res.json({ ok: true });
-  } catch (err) {
-    console.error('[OTP Verification Error]', err.message);
-    res.status(500).json({ ok: false, error: 'An error occurred during verification.' });
-  }
+  return res.json({ ok: true });
 });
 
-// Resend Endpoint
+// Resend Endpoint (Legacy fallback)
 app.post('/api/otp/resend', async (req, res) => {
-  const { phone } = req.body || {};
-  if (!phone) {
-    return res.status(400).json({ ok: false, error: 'Phone number is required.' });
-  }
-
-  try {
-    const result = await sendVerificationOtp(phone);
-    res.json({ ok: true, method: result.method });
-  } catch (otpErr) {
-    console.error('[Twilio OTP Resend Failed]', otpErr.message);
-    res.status(500).json({ ok: false, error: 'Failed to resend code. Please try again.' });
-  }
+  return res.json({ ok: true });
 });
 
 // Generic user-input submission endpoint

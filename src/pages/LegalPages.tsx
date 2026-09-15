@@ -99,8 +99,8 @@ export function ConsentPage() {
         <section className="surface-card p-6 rounded-2xl border border-border">
           <p className="text-base leading-relaxed">
             By clicking <strong>&ldquo;Unlock My Results&rdquo;</strong>, I provide my express written consent
-            to be contacted by <strong>RJ Health Solutions L.L.C</strong> and the licensed
-            insurance agent(s)/agency(ies) <strong>RJ Health Solutions</strong> at the phone number
+            to be contacted by <strong>Health Coverage AI</strong> and licensed
+            insurance agent(s)/agency(ies) at the phone number
             and email I provided &mdash; including through automated dialing technology, prerecorded
             or artificial/AI voice messages, and SMS/text &mdash; regarding health insurance products,
             even if my number is on a state or federal Do Not Call list.
