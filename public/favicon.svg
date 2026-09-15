@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <filter id="shadow" x="-35%" y="-35%" width="170%" height="170%">
+      <feDropShadow dx="0" dy="6" stdDeviation="6" flood-color="#2563eb" flood-opacity=".35"/>
+    </filter>
+  </defs>
+  <rect x="8" y="8" width="48" height="48" rx="14" fill="#2563eb" filter="url(#shadow)"/>
+  <rect x="22" y="16" width="20" height="32" rx="3" fill="none" stroke="#fff" stroke-width="3"/>
+  <rect x="27" y="21" width="10" height="5" rx="1" fill="#fff"/>
+  <circle cx="27" cy="31" r="1.7" fill="#fff"/>
+  <circle cx="32" cy="31" r="1.7" fill="#fff"/>
+  <circle cx="37" cy="31" r="1.7" fill="#fff"/>
+  <circle cx="27" cy="37" r="1.7" fill="#fff"/>
+  <circle cx="32" cy="37" r="1.7" fill="#fff"/>
+  <circle cx="37" cy="37" r="1.7" fill="#fff"/>
+  <circle cx="27" cy="43" r="1.7" fill="#fff"/>
+  <circle cx="32" cy="43" r="1.7" fill="#fff"/>
+  <circle cx="37" cy="43" r="1.7" fill="#fff"/>
+</svg>
