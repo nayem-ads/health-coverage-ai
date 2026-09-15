@@ -953,6 +953,7 @@ app.post('/api/leads', async (req, res) => {
         }
       }, 60000);
       autoCaptureTimers.set(leadId, timer);
+    }
     return res.status(201).json({ ok: true, leadId: savedLead.id });
   } else {
     // Final Form Submission
