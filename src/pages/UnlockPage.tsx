@@ -313,13 +313,13 @@ export default function UnlockPage() {
                 Unlock your personalized results
               </h1>
               <p className="text-sm sm:text-base text-body">
-                Your results are ready! Enter your info to see them immediately.
+                Your results are ready! Enter your info to see them.
               </p>
             </div>
             
             {/* Preview */}
             <div className="hidden sm:block surface-card p-5 mb-6">
-              <p className="text-sm font-medium text-heading mb-4">What you will see:</p>
+              <p className="text-sm font-medium text-heading mb-4">What you'll see:</p>
               <div className="space-y-3">
                 {previewItems.map((item) => (
                   <div key={item.label} className="flex items-center gap-3">
