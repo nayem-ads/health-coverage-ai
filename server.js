@@ -1006,9 +1006,17 @@ app.get(/.*/, (_req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
-// Initialise DB schema then start listening
-initSchema().catch((err) => console.error('Schema init error:', err.message));
+// Initialise DB schema, then start listening
+async function startServer() {
+  try {
+    await initSchema();
+  } catch (err) {
+    console.error('Schema init error:', err.message);
+  }
 
-app.listen(port, () => {
-  console.log(`Health coverage calculator running on port ${port}`);
-});
+  app.listen(port, () => {
+    console.log(`Health coverage calculator running on port ${port}`);
+  });
+}
+
+startServer();
