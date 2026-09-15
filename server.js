@@ -19,7 +19,7 @@ const apiBase = 'https://marketplace.api.healthcare.gov/api/v1';
 const cmsApiKey = process.env.MARKETPLACE_API_KEY || process.env.VITE_MARKETPLACE_API_KEY;
 const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
 const NOTIFICATION_TO = process.env.NOTIFICATION_TO || 'jayedbinkawsar797@gmail.com';
-const NOTIFICATION_FROM = process.env.NOTIFICATION_FROM || 'Health Coverage AI Leads <noreply@healthcoveragequote.com>';
+const NOTIFICATION_FROM = process.env.NOTIFICATION_FROM || 'Health Coverage AI <onboarding@resend.dev>';
 const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 
 // Zoho CRM integration disabled (leads dispatched exclusively to email & local store)
@@ -333,7 +333,7 @@ async function sendLeadNotification(lead, body) {
   try {
     const plans = await getPlansForLead(body);
     console.log(`[Resend] Attempting to send lead email for "${body.fullName || body.name || 'Unknown'}" (Status: ${lead.status}) to ${NOTIFICATION_TO}...`);
-    const data = await resend.emails.send({
+    const emailPayload = {
       from: NOTIFICATION_FROM,
       to: [NOTIFICATION_TO],
       subject: `🔔 [${statusLabel}] New Lead: ${body.fullName || body.name || 'Unknown'} — Health Coverage AI`,
@@ -400,8 +400,25 @@ async function sendLeadNotification(lead, body) {
           <p style="color:#9ca3af;font-size:12px;">Sent by Health Coverage AI &mdash; Do not reply to this email.</p>
         </div>
       `,
-    });
-    console.log('[Resend] Email sent successfully. Response:', JSON.stringify(data));
+    };
+
+    let result = await resend.emails.send(emailPayload);
+    if (result.error) {
+      console.warn('[Resend] Primary send error:', result.error.message);
+      if (emailPayload.from !== 'Health Coverage AI <onboarding@resend.dev>') {
+        console.log('[Resend] Retrying with default onboarding@resend.dev sender...');
+        result = await resend.emails.send({
+          ...emailPayload,
+          from: 'Health Coverage AI <onboarding@resend.dev>'
+        });
+      }
+    }
+
+    if (result.error) {
+      console.error('[Resend] Email dispatch failed after retry:', result.error);
+    } else {
+      console.log('[Resend] Email sent successfully. ID:', result.data?.id);
+    }
   } catch (err) {
     console.error('[Resend] Lead notification email failed:', err.message);
   }
@@ -958,7 +975,7 @@ app.post('/api/leads', async (req, res) => {
   } else {
     // Final Form Submission
     if (currentStatus !== 'submitted' && currentStatus !== 'verified') {
-      sendLeadNotification(savedLead, mappedLead);
+      await sendLeadNotification(savedLead, mappedLead);
     }
 
     // Direct Instant Unlock (Twilio SMS OTP removed)
